@@ -46,14 +46,15 @@ Edit the constants at the top of [`relay_control.py`](relay_control.py):
 | `RELAY_PORT` | `502` | Modbus/TCP socket port |
 | `UNIT_ID` | `0x01` | Board's Modbus address (read from register `0x4000`) |
 | `NUM_CHANNELS` | `8` | Number of relay channels |
-| `WEB_HOST` | `0.0.0.0` | Web bind address; use `127.0.0.1` to restrict to this PC |
+| `WEB_HOST` | `127.0.0.1` | Web bind address (this PC only); set to `0.0.0.0` to expose on the LAN |
 | `WEB_PORT` | `8088` | Web server port |
 | `CHANNEL_LABELS` | `Relay 1..8` | Friendly name per channel |
 
-> **Security note:** the panel itself has no authentication. With
-> `WEB_HOST = "0.0.0.0"` anyone on your LAN can switch the relays. Set it to
-> `127.0.0.1`, or place it behind a trusted network / reverse proxy with auth,
-> if that matters for your deployment.
+> **Security note:** the panel itself has no authentication. It binds to
+> `127.0.0.1` (this PC only) by default. If you set `WEB_HOST = "0.0.0.0"` to
+> reach it from other machines, anyone on your LAN can switch the relays — put
+> it behind a trusted network / reverse proxy with auth if that matters for your
+> deployment.
 
 ## HTTP API
 

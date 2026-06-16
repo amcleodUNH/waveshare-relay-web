@@ -29,7 +29,7 @@ UNIT_ID      = 0x01             # board's Modbus address (read from reg 0x4000)
 NUM_CHANNELS = 8
 SOCK_TIMEOUT = 4.0              # seconds per Modbus transaction
 
-WEB_HOST = "0.0.0.0"            # set to "127.0.0.1" to restrict to this PC
+WEB_HOST = "127.0.0.1"          # this PC only; set to "0.0.0.0" to expose on the LAN
 WEB_PORT = 8088
 
 # Friendly labels for each channel (edit to match your wiring).
