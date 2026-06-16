@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "relay",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["relay_control.py"],
+      "port": 8088
+    }
+  ]
+}
