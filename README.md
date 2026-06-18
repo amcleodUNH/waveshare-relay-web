@@ -7,6 +7,8 @@ A zero-dependency web control panel for the Waveshare **Modbus POE ETH Relay**
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+![Relay control panel](docs/relay-panel.png)
+
 ## Why
 
 The Waveshare *Modbus POE ETH Relay* bridges Ethernet straight to its internal
