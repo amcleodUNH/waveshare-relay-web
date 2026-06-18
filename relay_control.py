@@ -54,6 +54,7 @@ ADDR_ALL    = 0x00FF   # special coil address that targets every channel at once
 # Modbus-RTU-over-TCP client
 # ---------------------------------------------------------------------------
 _modbus_lock = threading.Lock()   # board allows one transaction at a time
+_sock = None                      # single persistent connection, reused for every txn
 
 
 def _crc16(data: bytes) -> bytes:
@@ -69,28 +70,89 @@ def _crc16(data: bytes) -> bytes:
     return bytes([crc & 0xFF, (crc >> 8) & 0xFF])
 
 
+def _close_sock():
+    global _sock
+    if _sock is not None:
+        try:
+            _sock.close()
+        except Exception:
+            pass
+        _sock = None
+
+
+def _ensure_sock():
+    """Return the live socket, opening it if needed. Caller holds the lock."""
+    global _sock
+    if _sock is None:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(SOCK_TIMEOUT)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        s.connect((RELAY_HOST, RELAY_PORT))
+        _sock = s
+    return _sock
+
+
+def _recv_exact(s, n: int) -> bytes:
+    """Read exactly n bytes or raise — keeps the reused stream framed correctly."""
+    buf = b""
+    while len(buf) < n:
+        chunk = s.recv(n - len(buf))
+        if not chunk:
+            raise IOError("connection closed by board")
+        buf += chunk
+    return buf
+
+
+def _read_reply(s) -> bytes:
+    """Read one complete RTU reply, sizing it from the function code.
+
+    A persistent stream can't be drained with a single recv() the way a
+    fresh-per-transaction socket could -- a short read would desync every
+    later transaction. So read the header, then exactly as many more bytes
+    as this function code implies.
+    """
+    head = _recv_exact(s, 2)                 # address, function
+    fc = head[1]
+    if fc & 0x80:                            # exception: code + CRC
+        rest = _recv_exact(s, 3)
+    elif fc in (0x01, 0x02, 0x03, 0x04):     # read*: byte-count, data, CRC
+        bc = _recv_exact(s, 1)
+        rest = bc + _recv_exact(s, bc[0] + 2)
+    elif fc in (0x05, 0x06, 0x0F, 0x10):     # write*: 4 data bytes + CRC
+        rest = _recv_exact(s, 6)
+    else:
+        raise IOError("unexpected function code 0x%02X" % fc)
+    return head + rest
+
+
 def _transaction(payload: bytes, retries: int = 1) -> bytes:
-    """Send one RTU frame (payload + CRC) and return the full reply frame."""
+    """Send one RTU frame on the shared connection and return the reply frame.
+
+    The socket is reused across calls; on any I/O error it is dropped and a
+    fresh one is opened for the retry. This avoids the rapid connect/close
+    churn that can exhaust the board's small TCP connection pool.
+    """
     frame = payload + _crc16(payload)
     last_err = None
     with _modbus_lock:
         for _ in range(retries + 1):
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(SOCK_TIMEOUT)
             try:
-                s.connect((RELAY_HOST, RELAY_PORT))
+                s = _ensure_sock()
                 s.sendall(frame)
-                reply = s.recv(256)
-                if not reply:
-                    raise IOError("empty reply")
-                if reply[1] & 0x80:        # Modbus exception bit
+                reply = _read_reply(s)
+                if _crc16(reply[:-2]) != reply[-2:]:
+                    raise IOError("CRC mismatch on reply %s" % reply.hex())
+                if reply[0] != payload[0]:       # unit id must match
+                    raise IOError("wrong unit id in reply %s" % reply.hex())
+                if reply[1] & 0x80:              # Modbus exception response
                     raise IOError("modbus exception code 0x%02X" % reply[2])
+                if reply[1] != payload[1]:       # function must echo back
+                    raise IOError("unexpected function in reply %s" % reply.hex())
                 return reply
             except Exception as e:        # noqa: BLE001 - reported to caller
                 last_err = e
+                _close_sock()             # force a clean reconnect next attempt
                 time.sleep(0.15)
-            finally:
-                s.close()
     raise IOError("relay transaction failed: %s" % last_err)
 
 
@@ -387,6 +449,8 @@ def main():
     except KeyboardInterrupt:
         print("\nstopped.")
         srv.shutdown()
+    finally:
+        _close_sock()
 
 
 if __name__ == "__main__":

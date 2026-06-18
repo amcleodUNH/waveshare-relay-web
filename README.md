@@ -93,6 +93,14 @@ The board is controlled with standard Modbus function codes wrapped in RTU frami
   `0x5500` = toggle, at coil address `channel - 1`
 - **Set all relays** — FC `0x05` to the special coil address `0x00FF`
 
+All traffic goes over a **single persistent TCP connection**, guarded by a lock so
+only one transaction is in flight at a time. Replies are framed by reading exactly
+the number of bytes each function code implies, so the reused stream never desyncs.
+If the link drops, the next transaction transparently reconnects and retries once.
+This deliberately avoids opening a new socket per command — these boards have a very
+small connection pool, and rapid connect/close churn can exhaust it and wedge the
+device (requiring a power-cycle).
+
 ## Compatibility
 
 Built and verified against the Waveshare **Modbus POE ETH Relay** (8-channel).
